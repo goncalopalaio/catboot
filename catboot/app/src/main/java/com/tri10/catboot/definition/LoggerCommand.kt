@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.SharedFlow
 interface LoggerCommand {
     val lines: SharedFlow<String>
     val errors: SharedFlow<String>
+    val isReading: SharedFlow<String>
 
     suspend fun start(): Result<Int>
 }

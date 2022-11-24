@@ -34,14 +34,24 @@ class MainFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val logLineTextView = view.findViewById<TextView>(R.id.logLine)
+        val lineCountTextView = view.findViewById<TextView>(R.id.lineCount)
+        val isReadingTextView = view.findViewById<TextView>(R.id.isReading)
         val errorLineTextView = view.findViewById<TextView>(R.id.errorLine)
 
-        viewModel.start()
+        var count = 0
         viewModel.newLogLine.observe(viewLifecycleOwner) {
             logLineTextView.text = it
+            count++
+            lineCountTextView.text = "$count"
+
         }
         viewModel.newErrorLine.observe(viewLifecycleOwner) {
             errorLineTextView.text = it
         }
+        viewModel.isReading.observe(viewLifecycleOwner) {
+            isReadingTextView.text = "$it"
+        }
+
+        viewModel.start()
     }
 }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 class MainViewModel(private val logger: Logger, private val loggerCommand: LoggerCommand) : ViewModel() {
     val newLogLine = loggerCommand.lines.asLiveData()
     val newErrorLine = loggerCommand.errors.asLiveData()
+    val isReading = loggerCommand.isReading.asLiveData()
 
     fun start() {
         viewModelScope.launch(Dispatchers.IO) {
