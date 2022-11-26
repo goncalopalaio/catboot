@@ -1,4 +1,4 @@
-package com.tri10.catboot.ui.main.command
+package com.tri10.catboot.implementation.command
 
 import androidx.annotation.WorkerThread
 import com.tri10.catboot.definition.Logger
@@ -11,7 +11,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.system.measureTimeMillis
 
 private val COMMAND = arrayOf("logcat", "-v", "time")
 class LogcatCommand(private val logger: Logger, private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)): LoggerCommand {

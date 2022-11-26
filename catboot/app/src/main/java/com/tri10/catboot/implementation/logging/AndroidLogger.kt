@@ -1,4 +1,4 @@
-package com.tri10.catboot.ui.main.logging
+package com.tri10.catboot.implementation.logging
 
 import android.util.Log
 import com.tri10.catboot.definition.Logger
