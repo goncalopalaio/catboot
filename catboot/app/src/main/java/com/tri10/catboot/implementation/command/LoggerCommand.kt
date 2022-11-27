@@ -1,8 +1,8 @@
 package com.tri10.catboot.implementation.command
 
 import androidx.annotation.WorkerThread
+import com.tri10.catboot.definition.LogSource
 import com.tri10.catboot.definition.Logger
-import com.tri10.catboot.definition.LoggerCommand
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -12,66 +12,71 @@ import java.io.InputStream
 import java.io.InputStreamReader
 import java.util.concurrent.atomic.AtomicBoolean
 
-private val COMMAND = arrayOf("logcat", "-v", "time")
-class LogcatCommand(private val logger: Logger, private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)): LoggerCommand {
+private const val RETRY_INTERVAL_MS = 5000L
+
+class LoggerCommand(
+    private val logger: Logger,
+    private val source: LogSource,
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+) {
     private val processIsAlive = AtomicBoolean(false)
     private val _isReading = MutableSharedFlow<String>()
     private val _lines = MutableSharedFlow<String>()
     private val _errors = MutableSharedFlow<String>()
 
-    override val lines: SharedFlow<String> = _lines
-    override val errors: SharedFlow<String> = _errors
-    override val isReading: SharedFlow<String> = _isReading
+    val lines: SharedFlow<String> = _lines
+    val errors: SharedFlow<String> = _errors
+    val isReading: SharedFlow<String> = _isReading
 
     // TODO Can we request READ_LOGS at runtime?.
     // TODO check READ_LOGS permission.
 
     @WorkerThread // Contains blocking operations.
-    override suspend fun start(): Result<Int> {
-        logger.debug("Building process")
-        val processBuilder = ProcessBuilder(*COMMAND)
-        val process = try {
-            @Suppress("BlockingMethodInNonBlockingContext") // No non-blocking alternative.
-            val runningProcess = processBuilder.start()
+    suspend fun start(): Result<Int> {
+        val jobs = mutableListOf<Job>()
+
+        while (true) {
+            yield()
+
+            jobs.forEach { it.cancel(cause = CancellationException("Starting new source")) }
+            jobs.joinAll()
+
+            val runningSourceResult = source.start()
+            val runningSource = if (runningSourceResult.isFailure) {
+                logger.debug("error | ${runningSourceResult.exceptionOrNull()}")
+                delay(RETRY_INTERVAL_MS)
+                continue
+            } else {
+                val result = runningSourceResult.getOrNull()
+                if (result == null) {
+                    logger.debug("result is null") // Note: it would be safe to do getOrThrow but we're keeping this to avoid a loose exception. Maybe replace this with a development assert?
+                    delay(RETRY_INTERVAL_MS)
+                    continue
+                } else {
+                    result
+                }
+            }
+
+            val (stdOutput, stdError) = runningSource
+            jobs.clear()
+            jobs.add(scope.launch { stdOutput(stdOutput) })
+            jobs.add(scope.launch { stdOutput(stdError) })
+
             setProcessState(true)
-            runningProcess
+            val exitCode = try {
+                logger.debug("waitFor")
+                @Suppress("BlockingMethodInNonBlockingContext")
+                source.waitFor()
 
-        } catch (e: IOException) {
-            logger.debug("Failed to build process | e=$e")
-            return Result.failure(e)
+            } catch (e: InterruptedException) {
+                logger.debug("Interrupted | e=$e")
+
+                setProcessState(false)
+                return Result.failure(e)
+            }
+
+            logger.debug("Exited | exitCode=$exitCode")
         }
-
-        val stdOutput = process.inputStream
-        val stdError = process.errorStream
-
-        logger.debug("stdOutput=$stdOutput, stdError=$stdError")
-
-        if (stdOutput == null) return Result.failure(Exception("No stream to STDOUT")) // TODO - We don't really need the stacktrace from the exception.
-        if (stdError == null) return Result.failure(Exception("No stream to STDERR")) // TODO - We don't really need the stacktrace from the exception.
-
-        val jobs = listOf(
-            scope.launch {stdOutput(stdOutput)},
-            scope.launch {stdError(stdError)},
-        )
-
-        val exitCode = try {
-            logger.debug("waitFor")
-            @Suppress("BlockingMethodInNonBlockingContext")
-            process.waitFor()
-
-        } catch (e: InterruptedException) {
-            logger.debug("Interrupted | e=$e")
-
-            setProcessState(false)
-            return Result.failure(e)
-        }
-
-        setProcessState(false)
-        logger.debug("joinAll")
-        jobs.joinAll()
-
-        logger.debug("exitCode=$exitCode")
-        return Result.success(exitCode)
     }
 
     private suspend fun stdError(stream: InputStream) {
@@ -96,7 +101,7 @@ class LogcatCommand(private val logger: Logger, private val scope: CoroutineScop
     private suspend fun readLines(stream: InputStream, callback: suspend (line: String) -> Any) {
         val reader = BufferedReader(InputStreamReader(stream))
 
-        while(processIsAlive.get()) {
+        while (processIsAlive.get()) {
             val startTimeMs = System.currentTimeMillis()
             // yield()
 

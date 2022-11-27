@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.tri10.catboot.definition.Logger
-import com.tri10.catboot.definition.LoggerCommand
+import com.tri10.catboot.implementation.command.LoggerCommand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
